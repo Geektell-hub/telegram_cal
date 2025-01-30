@@ -1,84 +1,245 @@
-<!-- calandar.html (полная версия) -->
-<script>
-    const master = new URLSearchParams(window.location.search).get('master');
-    let currentDate = new Date();
-
-    async function loadSlots(date) {
-        try {
-            const response = await fetch(`/api/slots/${master}`);
-            const slots = await response.json();
-            return slots[date] || [];
-        } catch (error) {
-            console.error('Ошибка загрузки:', error);
-            return [];
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Календарь записи</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
         }
-    }
 
-    async function generateCalendar() {
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth();
-        const firstDay = new Date(year, month, 1);
-        const lastDay = new Date(year, month + 1, 0);
+        .calendar-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
 
-        // ... ваш код отрисовки календаря ...
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
 
-        for (let day = 1; day <= lastDay.getDate(); day++) {
-            const date = new Date(year, month, day);
-            const dateString = date.toISOString().split('T')[0];
-            const slots = await loadSlots(dateString);
+        .calendar-header button {
+            background: none;
+            border: none;
+            font-size: 18px;
+            color: #007bff;
+            cursor: pointer;
+            padding: 10px;
+            border-radius: 50%;
+            transition: background-color 0.3s ease;
+        }
 
-            const dayElement = document.createElement('div');
-            dayElement.classList.add('calendar-day');
-            dayElement.textContent = day;
+        .calendar-header button:hover {
+            background-color: rgba(0, 123, 255, 0.1);
+        }
 
-            if (slots.length > 0) {
-                dayElement.classList.add('available');
-                dayElement.addEventListener('click', () => showTimeSlots(dateString));
-            } else {
-                dayElement.classList.add('unavailable');
+        .calendar-header h2 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .calendar-day {
+            padding: 15px;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+
+        .calendar-day.available {
+            background-color: #e0f7fa;
+            color: #007bff;
+        }
+
+        .calendar-day.unavailable {
+            background-color: #f8f9fa;
+            color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .calendar-day:hover:not(.unavailable) {
+            background-color: #007bff;
+            color: #fff;
+            transform: scale(1.05);
+        }
+
+        .time-slots {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
+        }
+
+        .time-slot {
+            padding: 10px;
+            text-align: center;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+
+        .time-slot.available {
+            background-color: #e0f7fa;
+            color: #007bff;
+        }
+
+        .time-slot.unavailable {
+            background-color: #f8f9fa;
+            color: #ccc;
+            cursor: not-allowed;
+        }
+
+        .time-slot:hover:not(.unavailable) {
+            background-color: #007bff;
+            color: #fff;
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 480px) {
+            .calendar-day {
+                padding: 10px;
             }
 
-            calendar.appendChild(dayElement);
+            .time-slot {
+                padding: 8px;
+            }
         }
-    }
+    </style>
+</head>
+<body>
+    <div class="calendar-container">
+        <div class="calendar-header">
+            <button id="prev-month">←</button>
+            <h2 id="current-month"></h2>
+            <button id="next-month">→</button>
+        </div>
+        <div class="calendar-grid" id="calendar"></div>
+        <div class="time-slots" id="time-slots"></div>
+    </div>
 
-    async function showTimeSlots(date) {
-        const slots = await loadSlots(date);
-        timeSlots.innerHTML = slots.map(time => `
-            <div class="time-slot available"
-                 data-date="${date}"
-                 data-time="${time}"
-                 onclick="handleBooking('${date}', '${time}')">
-                ${time}
-            </div>
-        `).join('');
-    }
+    <script>
+        // Пример данных о доступных слотах
+        const availableSlots = {
+            "2023-10-15": ["10:00", "11:00", "14:00"],
+            "2023-10-16": ["09:00", "12:00", "15:00"],
+            "2023-11-01": ["10:00", "12:00", "16:00"],
+            "2023-11-02": ["09:00", "11:00", "14:00"],
+        };
 
-    async function handleBooking(date, time) {
-        const service = prompt('Введите название услуги:');
-        if (!service) return;
+        let currentDate = new Date();
+        const calendar = document.getElementById('calendar');
+        const timeSlots = document.getElementById('time-slots');
+        const currentMonthElement = document.getElementById('current-month');
 
-        try {
-            const response = await fetch('/book', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    master: master,
-                    date: date,
-                    time: time,
-                    service: service
-                })
+        // Названия месяцев на русском
+        const monthNames = [
+            "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+            "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+        ];
+
+        // Дни недели на русском
+        const dayNames = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+        function generateCalendar() {
+            calendar.innerHTML = '';
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+
+            currentMonthElement.textContent = `${monthNames[month]} ${year}`;
+
+            // Добавляем заголовки дней недели
+            dayNames.forEach(day => {
+                const dayElement = document.createElement('div');
+                dayElement.textContent = day;
+                dayElement.style.fontWeight = '600';
+                dayElement.style.color = '#666';
+                calendar.appendChild(dayElement);
             });
 
-            if (response.ok) {
-                document.querySelectorAll(`[data-date="${date}"][data-time="${time}"]`)
-                    .forEach(el => el.classList.replace('available', 'unavailable'));
+            // Заполняем дни предыдущего месяца
+            for (let i = 0; i < firstDay.getDay() - 1; i++) {
+                const dayElement = document.createElement('div');
+                dayElement.classList.add('calendar-day', 'unavailable');
+                dayElement.textContent = '';
+                calendar.appendChild(dayElement);
             }
-        } catch (error) {
-            console.error('Ошибка:', error);
-        }
-    }
 
-    // Инициализация
-    generateCalendar();
-</script>
+            // Заполняем дни текущего месяца
+            for (let day = 1; day <= lastDay.getDate(); day++) {
+                const date = new Date(year, month, day);
+                const dateString = date.toISOString().split('T')[0];
+                const isAvailable = availableSlots[dateString];
+
+                const dayElement = document.createElement('div');
+                dayElement.classList.add('calendar-day');
+                if (isAvailable) {
+                    dayElement.classList.add('available');
+                    dayElement.addEventListener('click', () => showTimeSlots(dateString));
+                } else {
+                    dayElement.classList.add('unavailable');
+                }
+                dayElement.textContent = day;
+                calendar.appendChild(dayElement);
+            }
+        }
+
+        // Показ доступных временных слотов
+        function showTimeSlots(date) {
+            timeSlots.innerHTML = '';
+            const slots = availableSlots[date];
+            if (slots) {
+                slots.forEach(time => {
+                    const timeSlot = document.createElement('div');
+                    timeSlot.classList.add('time-slot', 'available');
+                    timeSlot.textContent = time;
+                    timeSlot.addEventListener('click', () => selectSlot(date, time));
+                    timeSlots.appendChild(timeSlot);
+                });
+            }
+        }
+
+        // Выбор слота
+        function selectSlot(date, time) {
+            // Отправка данных в Telegram
+            Telegram.WebApp.sendData(JSON.stringify({ date, time }));
+        }
+
+        // Инициализация календаря
+        generateCalendar();
+
+        // Обработчики для переключения месяцев
+        document.getElementById('prev-month').addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            generateCalendar();
+        });
+
+        document.getElementById('next-month').addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            generateCalendar();
+        });
+    </script>
+</body>
+</html>
